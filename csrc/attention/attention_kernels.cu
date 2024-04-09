@@ -662,6 +662,7 @@ void paged_attention_v1_launcher(
   T* query_ptr = reinterpret_cast<T*>(query.data_ptr());
   CACHE_T* key_cache_ptr = reinterpret_cast<CACHE_T*>(key_cache.data_ptr());
   CACHE_T* value_cache_ptr = reinterpret_cast<CACHE_T*>(value_cache.data_ptr());
+  const int* head_mapping_ptr = reinterpret_cast<const int*>(head_mapping.data_ptr());
   int* block_tables_ptr = block_tables.data_ptr<int>();
   int* context_lens_ptr = context_lens.data_ptr<int>();
 
@@ -711,7 +712,7 @@ void paged_attention_v1_launcher(
     query,                                                                   \
     key_cache,                                                               \
     value_cache,                                                             \
-    head_mapping,                                                   \
+    head_mapping,                                                            \
     scale,                                                                   \
     block_tables,                                                            \
     context_lens,                                                            \
@@ -850,6 +851,7 @@ void paged_attention_v2_launcher(
   T* query_ptr = reinterpret_cast<T*>(query.data_ptr());
   CACHE_T* key_cache_ptr = reinterpret_cast<CACHE_T*>(key_cache.data_ptr());
   CACHE_T* value_cache_ptr = reinterpret_cast<CACHE_T*>(value_cache.data_ptr());
+  const int* head_mapping_ptr = reinterpret_cast<const int*>(head_mapping.data_ptr());
   int* block_tables_ptr = block_tables.data_ptr<int>();
   int* context_lens_ptr = context_lens.data_ptr<int>();
 
@@ -905,7 +907,7 @@ void paged_attention_v2_launcher(
     query,                                                                       \
     key_cache,                                                                   \
     value_cache,                                                                 \
-    head_mapping,                                                   \
+    head_mapping,                                                                \
     scale,                                                                       \
     block_tables,                                                                \
     context_lens,                                                                \
