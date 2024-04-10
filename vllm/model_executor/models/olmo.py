@@ -39,15 +39,14 @@
 from typing import List, Optional, Tuple
 
 import torch
+import torch.nn.functional as F
 # this model must need this dependency
 from hf_olmo import OLMoConfig
 from torch import nn
 
 from vllm.attention import Attention, AttentionMetadata
-from vllm.model_executor.layers.activation import SiluAndMul
 from vllm.model_executor.layers.linear import (ColumnParallelLinear,
                                                LinearMethodBase,
-                                               MergedColumnParallelLinear,
                                                QKVParallelLinear,
                                                RowParallelLinear)
 from vllm.model_executor.layers.logits_processor import LogitsProcessor
@@ -61,6 +60,17 @@ from vllm.model_executor.sampling_metadata import SamplingMetadata
 from vllm.model_executor.weight_utils import (default_weight_loader,
                                               hf_model_weights_iterator)
 from vllm.sequence import SamplerOutput
+
+
+class SwiGLU(nn.Module):
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x, gate = x.chunk(2, dim=-1)
+        return F.silu(gate) * x
+
+    @property
+    def output_multiplier(self) -> float:
+        return 0.5
 
 
 class OlmoAttention(nn.Module):
@@ -164,16 +174,17 @@ class OlmoMLP(nn.Module):
                                     bias=False)
 
         # Feed-forward input projection.
-        self.ff_proj = MergedColumnParallelLinear(
+        self.ff_proj = ColumnParallelLinear(
             config.d_model,
-            [self.hidden_size // 2] * 2,
+            self.hidden_size,
             bias=config.include_bias,
             linear_method=linear_method,
         )
 
         # Activation function.
-        self.act = SiluAndMul()
-        self.act.output_multiplier = 0.5
+        # self.act = SiluAndMul()
+        # self.act.output_multiplier = 0.5
+        self.act = SwiGLU()
         assert (self.act.output_multiplier * self.hidden_size) % 1 == 0
 
         # Feed-forward output projection.
@@ -363,12 +374,8 @@ class OLMoForCausalLM(nn.Module):
             if ".att" in name:
                 name = name.replace(".att", ".attn.att")
             # mlp
-            if ".ff_proj" in name:
-                name = name.replace(".ff_proj", ".mlp.ff_proj")
-                # Reverse the weight for the MergeColumnParallelLinear
-                loaded_weight = torch.concat(loaded_weight.chunk(2)[::-1])
-            if ".ff_out" in name and "transformer.ff_out" not in name:
-                name = name.replace(".ff_out", ".mlp.ff_out")
+            if ".ff" in name and "transformer.ff_out" not in name:
+                name = name.replace(".ff", ".mlp.ff")
             # there is no bias in olmo
             param = params_dict[name]
             weight_loader = getattr(param, "weight_loader",
