@@ -101,7 +101,7 @@ __device__ void paged_attention_kernel(
   const scalar_t* __restrict__ q,         // [num_seqs, num_heads, head_size]
   const cache_t* __restrict__ k_cache,    // [num_blocks, num_kv_heads, head_size/x, block_size, x]
   const cache_t* __restrict__ v_cache,    // [num_blocks, num_kv_heads, head_size, block_size]
-  const int num_kv_heads,                 // [num_heads]
+  const int* __restrict__ head_mapping,   // [num_heads]
   const float scale,
   const int* __restrict__ block_tables,   // [num_seqs, max_num_blocks_per_seq]
   const int* __restrict__ context_lens,   // [num_seqs]
@@ -145,8 +145,7 @@ __device__ void paged_attention_kernel(
 
   const int head_idx = blockIdx.x;
   const int num_heads = gridDim.x;
-  const int num_queries_per_kv = num_heads / num_kv_heads;
-  const int kv_head_idx = head_idx / num_queries_per_kv;
+  const int kv_head_idx = head_mapping[head_idx];
   const float alibi_slope = alibi_slopes == nullptr ? 0.f : alibi_slopes[head_idx];
 
   // A vector type to store a part of a key or a query.
@@ -454,7 +453,7 @@ __global__ void paged_attention_v1_kernel(
   const scalar_t* __restrict__ q,         // [num_seqs, num_heads, head_size]
   const cache_t* __restrict__ k_cache,    // [num_blocks, num_kv_heads, head_size/x, block_size, x]
   const cache_t* __restrict__ v_cache,    // [num_blocks, num_kv_heads, head_size, block_size]
-  const int num_kv_heads,                 // [num_heads]
+  const int* __restrict__ head_mapping,   // [num_heads]
   const float scale,
   const int* __restrict__ block_tables,   // [num_seqs, max_num_blocks_per_seq]
   const int* __restrict__ context_lens,   // [num_seqs]
@@ -466,7 +465,7 @@ __global__ void paged_attention_v1_kernel(
   const float kv_scale) {
   paged_attention_kernel<scalar_t, cache_t, HEAD_SIZE, BLOCK_SIZE, NUM_THREADS, IS_FP8_KV_CACHE>(
     /* exp_sums */ nullptr, /* max_logits */ nullptr,
-    out, q, k_cache, v_cache, num_kv_heads, scale, block_tables, context_lens,
+    out, q, k_cache, v_cache, head_mapping, scale, block_tables, context_lens,
     max_num_blocks_per_seq, alibi_slopes, q_stride, kv_block_stride, kv_head_stride, kv_scale);
 }
 
@@ -486,7 +485,7 @@ __global__ void paged_attention_v2_kernel(
   const scalar_t* __restrict__ q,         // [num_seqs, num_heads, head_size]
   const cache_t* __restrict__ k_cache,    // [num_blocks, num_kv_heads, head_size/x, block_size, x]
   const cache_t* __restrict__ v_cache,    // [num_blocks, num_kv_heads, head_size, block_size]
-  const int num_kv_heads,                 // [num_heads]
+  const int* __restrict__ head_mapping,   // [num_heads]
   const float scale,
   const int* __restrict__ block_tables,   // [num_seqs, max_num_blocks_per_seq]
   const int* __restrict__ context_lens,   // [num_seqs]
@@ -497,7 +496,7 @@ __global__ void paged_attention_v2_kernel(
   const int kv_head_stride,
   const float kv_scale) {
   paged_attention_kernel<scalar_t, cache_t, HEAD_SIZE, BLOCK_SIZE, NUM_THREADS, IS_FP8_KV_CACHE, PARTITION_SIZE>(
-    exp_sums, max_logits, tmp_out, q, k_cache, v_cache, num_kv_heads, scale,
+    exp_sums, max_logits, tmp_out, q, k_cache, v_cache, head_mapping, scale,
     block_tables, context_lens, max_num_blocks_per_seq, alibi_slopes,
     q_stride, kv_block_stride, kv_head_stride, kv_scale);
 }
@@ -613,7 +612,7 @@ __global__ void paged_attention_v2_reduce_kernel(
     query_ptr,                                                                                \
     key_cache_ptr,                                                                            \
     value_cache_ptr,                                                                          \
-    num_kv_heads,                                                                             \
+    head_mapping_ptr,                                                                         \
     scale,                                                                                    \
     block_tables_ptr,                                                                         \
     context_lens_ptr,                                                                         \
@@ -636,7 +635,7 @@ void paged_attention_v1_launcher(
   torch::Tensor& query,
   torch::Tensor& key_cache,
   torch::Tensor& value_cache,
-  int num_kv_heads,
+  torch::Tensor& head_mapping,
   float scale,
   torch::Tensor& block_tables,
   torch::Tensor& context_lens,
@@ -663,6 +662,7 @@ void paged_attention_v1_launcher(
   T* query_ptr = reinterpret_cast<T*>(query.data_ptr());
   CACHE_T* key_cache_ptr = reinterpret_cast<CACHE_T*>(key_cache.data_ptr());
   CACHE_T* value_cache_ptr = reinterpret_cast<CACHE_T*>(value_cache.data_ptr());
+  const int* head_mapping_ptr = reinterpret_cast<const int*>(head_mapping.data_ptr());
   int* block_tables_ptr = block_tables.data_ptr<int>();
   int* context_lens_ptr = context_lens.data_ptr<int>();
 
@@ -712,7 +712,7 @@ void paged_attention_v1_launcher(
     query,                                                                   \
     key_cache,                                                               \
     value_cache,                                                             \
-    num_kv_heads,                                                            \
+    head_mapping,                                                            \
     scale,                                                                   \
     block_tables,                                                            \
     context_lens,                                                            \
@@ -743,7 +743,7 @@ void paged_attention_v1(
   torch::Tensor& query,           // [num_seqs, num_heads, head_size]
   torch::Tensor& key_cache,       // [num_blocks, num_heads, head_size/x, block_size, x]
   torch::Tensor& value_cache,     // [num_blocks, num_heads, head_size, block_size]
-  int num_kv_heads,               // [num_heads]
+  torch::Tensor& head_mapping,    // [num_heads]
   float scale,
   torch::Tensor& block_tables,    // [num_seqs, max_num_blocks_per_seq]
   torch::Tensor& context_lens,    // [num_seqs]
@@ -787,7 +787,7 @@ void paged_attention_v1(
     query_ptr,                                                                                \
     key_cache_ptr,                                                                            \
     value_cache_ptr,                                                                          \
-    num_kv_heads,                                                                             \
+    head_mapping_ptr,                                                                         \
     scale,                                                                                    \
     block_tables_ptr,                                                                         \
     context_lens_ptr,                                                                         \
@@ -821,7 +821,7 @@ void paged_attention_v2_launcher(
   torch::Tensor& query,
   torch::Tensor& key_cache,
   torch::Tensor& value_cache,
-  int num_kv_heads,
+  torch::Tensor& head_mapping,
   float scale,
   torch::Tensor& block_tables,
   torch::Tensor& context_lens,
@@ -851,6 +851,7 @@ void paged_attention_v2_launcher(
   T* query_ptr = reinterpret_cast<T*>(query.data_ptr());
   CACHE_T* key_cache_ptr = reinterpret_cast<CACHE_T*>(key_cache.data_ptr());
   CACHE_T* value_cache_ptr = reinterpret_cast<CACHE_T*>(value_cache.data_ptr());
+  const int* head_mapping_ptr = reinterpret_cast<const int*>(head_mapping.data_ptr());
   int* block_tables_ptr = block_tables.data_ptr<int>();
   int* context_lens_ptr = context_lens.data_ptr<int>();
 
@@ -906,7 +907,7 @@ void paged_attention_v2_launcher(
     query,                                                                       \
     key_cache,                                                                   \
     value_cache,                                                                 \
-    num_kv_heads,                                                                \
+    head_mapping,                                                                \
     scale,                                                                       \
     block_tables,                                                                \
     context_lens,                                                                \
@@ -940,7 +941,7 @@ void paged_attention_v2(
   torch::Tensor& query,           // [num_seqs, num_heads, head_size]
   torch::Tensor& key_cache,       // [num_blocks, num_heads, head_size/x, block_size, x]
   torch::Tensor& value_cache,     // [num_blocks, num_heads, head_size, block_size]
-  int num_kv_heads,               // [num_heads]
+  torch::Tensor& head_mapping,    // [num_heads]
   float scale,
   torch::Tensor& block_tables,    // [num_seqs, max_num_blocks_per_seq]
   torch::Tensor& context_lens,    // [num_seqs]

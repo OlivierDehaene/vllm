@@ -21,6 +21,7 @@ Express your support on Twitter if vLLM aids you, or simply offer your appreciat
 ### Build from source
 
 ```bash
+pip install -r requirements.txt
 pip install -e .  # This may take several minutes.
 ```
 

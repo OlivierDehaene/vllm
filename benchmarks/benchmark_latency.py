@@ -68,8 +68,7 @@ def main(args: argparse.Namespace):
             return latency
 
     print("Warming up...")
-    for _ in tqdm(range(args.num_iters_warmup), desc="Warmup iterations"):
-        run_to_completion(profile_dir=None)
+    run_to_completion(profile_dir=None)
 
     if args.profile:
         profile_dir = args.profile_result_dir
@@ -85,12 +84,7 @@ def main(args: argparse.Namespace):
     latencies = []
     for _ in tqdm(range(args.num_iters), desc="Profiling iterations"):
         latencies.append(run_to_completion(profile_dir=None))
-    latencies = np.array(latencies)
-    percentages = [10, 25, 50, 75, 90]
-    percentiles = np.percentile(latencies, percentages)
     print(f'Avg latency: {np.mean(latencies)} seconds')
-    for percentage, percentile in zip(percentages, percentiles):
-        print(f'{percentage}% percentile latency: {percentile} seconds')
 
 
 if __name__ == '__main__':
@@ -112,13 +106,9 @@ if __name__ == '__main__':
                         default=1,
                         help='Number of generated sequences per prompt.')
     parser.add_argument('--use-beam-search', action='store_true')
-    parser.add_argument('--num-iters-warmup',
-                        type=int,
-                        default=10,
-                        help='Number of iterations to run for warmup.')
     parser.add_argument('--num-iters',
                         type=int,
-                        default=30,
+                        default=3,
                         help='Number of iterations to run.')
     parser.add_argument('--trust-remote-code',
                         action='store_true',

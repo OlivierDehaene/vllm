@@ -31,7 +31,7 @@ set(HIP_SUPPORTED_ARCHS "gfx906;gfx908;gfx90a;gfx940;gfx941;gfx942;gfx1030;gfx11
 # requirements.txt files and should be kept consistent.  The ROCm torch
 # versions are derived from Dockerfile.rocm
 #
-set(TORCH_SUPPORTED_VERSION_CUDA "2.2.1")
+set(TORCH_SUPPORTED_VERSION_CUDA "2.1.2")
 set(TORCH_SUPPORTED_VERSION_ROCM_5X "2.0.1")
 set(TORCH_SUPPORTED_VERSION_ROCM_6X "2.1.1")
 
@@ -162,12 +162,6 @@ endif()
 set(VLLM_EXT_SRC
   "csrc/cache_kernels.cu"
   "csrc/attention/attention_kernels.cu"
-  "csrc/pos_encoding_kernels.cu"
-  "csrc/activation_kernels.cu"
-  "csrc/layernorm_kernels.cu"
-  "csrc/quantization/squeezellm/quant_cuda_kernel.cu"
-  "csrc/quantization/gptq/q_gemm.cu"
-  "csrc/cuda_utils_kernels.cu"
   "csrc/moe_align_block_size_kernels.cu"
   "csrc/pybind.cpp")
 
